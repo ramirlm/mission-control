@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import { randomBytes } from 'crypto';
 import { dirname } from 'path';
 import { config, ensureDirExists } from './config';
 import { runMigrations } from './migrations';
@@ -73,6 +74,8 @@ function initializeSchema() {
 
 interface CountRow { count: number }
 
+const MIN_SEED_PASSWORD_LENGTH = 12
+
 function seedAdminUserFromEnv(dbConn: Database.Database): void {
   // Skip seeding during `next build` — env vars may not be available yet
   if (process.env.NEXT_PHASE === 'phase-production-build') return
@@ -81,8 +84,27 @@ function seedAdminUserFromEnv(dbConn: Database.Database): void {
   if (count > 0) return
 
   const username = process.env.AUTH_USER || 'admin'
-  const password = process.env.AUTH_PASS || 'admin'
+  const rawPass = process.env.AUTH_PASS || ''
   const displayName = username.charAt(0).toUpperCase() + username.slice(1)
+
+  let password: string
+  if (!rawPass) {
+    // No password configured — generate a cryptographically secure random one
+    password = randomBytes(16).toString('hex')
+    logger.warn(
+      `AUTH_PASS is not set. Generated a random admin password for user "${username}": ${password}\n` +
+      `Set AUTH_PASS in your .env file to use a fixed password.`
+    )
+  } else if (rawPass.length < MIN_SEED_PASSWORD_LENGTH) {
+    logger.error(
+      `AUTH_PASS must be at least ${MIN_SEED_PASSWORD_LENGTH} characters long. ` +
+      `Skipping admin user seeding to prevent insecure defaults. ` +
+      `Please set a strong AUTH_PASS and restart.`
+    )
+    return
+  } else {
+    password = rawPass
+  }
 
   dbConn.prepare(`
     INSERT OR IGNORE INTO users (username, display_name, password_hash, role)
