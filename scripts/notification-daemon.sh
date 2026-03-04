@@ -53,18 +53,15 @@ check_mission_control() {
 deliver_notifications() {
     log "INFO" "Starting notification delivery batch"
     
-    # Build API request
-    local api_payload="{\"limit\": $LIMIT"
-    
-    if [[ -n "$AGENT_FILTER" ]]; then
-        api_payload+=", \"agent_filter\": \"$AGENT_FILTER\""
-    fi
-    
-    if [[ "$DRY_RUN" == "true" ]]; then
-        api_payload+=", \"dry_run\": true"
-    fi
-    
-    api_payload+="}"
+    # Build API request using jq to safely encode all values in a single pass
+    local api_payload
+    api_payload=$(jq -n \
+        --arg limit "$LIMIT" \
+        --arg agent_filter "$AGENT_FILTER" \
+        --arg dry_run "$DRY_RUN" \
+        '{ limit: ($limit | tonumber) }
+         + if $agent_filter != "" then { agent_filter: $agent_filter } else {} end
+         + if $dry_run == "true" then { dry_run: true } else {} end')
     
     # Call notification delivery endpoint
     local response
